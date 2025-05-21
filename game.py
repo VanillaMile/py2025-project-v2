@@ -123,12 +123,15 @@ class Deck():
                 player.take_card(self.__deck_.pop(0))
 
 class GameEngine:
-    def __init__(self, players: List[Player], deck: Deck,
-                small_blind: int = 25, big_blind: int = 50, raise_amount: int = 10):
+    def __init__(self, players: List[Player], deck: Deck = None,
+                small_blind: int = 25, big_blind: int = 50, raise_amount: int = 10, start_card: int = 2):
+        if deck is None:
+            self.__deck_ = Deck(start_card=start_card)
+        else:
+            self.__deck_ = deck
         self.__players_ = players
         self.__big_blind = big_blind
         self.__small_blind = small_blind
-        self.__deck_ = deck
         self.__current_big_blind = self.__players_[0]
         self.__current_small_blind = self.__players_[1]
         self.__pot = 0
@@ -187,7 +190,7 @@ class GameEngine:
         self.print_table_info()
 
         # Dealing cards
-        deck.deal(self.__players_)
+        self.__deck_.deal(self.__players_)
         for player in self.__players_:
             self._sort_cards(player)
 
@@ -255,7 +258,7 @@ class GameEngine:
 
         self.history.append(self.round_history)
 
-        print('Play again? (y/n) [n]')
+        print('Play next round? (y/n) [n]')
         input_ = input()
         if input_.lower() == 'y':
             self.play_round()
@@ -401,6 +404,7 @@ class GameEngine:
             cards = []
             for i in indecies:
                 cards.append(player.get_player_hand()[i])
+            self.round_history.append(f'{player.get_player_name()} exchanged {len(indecies)} cards')
 
             remaining_cards = []
             for i in range(5):
