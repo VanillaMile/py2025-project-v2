@@ -233,14 +233,12 @@ class GameEngine:
         # Exchange cards
         if active != 1:
             self.exchange_cards()
-            for player in self.__players_:
-                self._sort_cards(player)
 
         # Showdown
         self.clear_view()
         self.print_table_info()
         winner = self._showdown()
-        hand_name, _ = self._calculate_hand_strength(winner)
+        hand_name, _ = self._calculate_hand_strength(winner.get_player_hand())
         text = f"{self.__purple}{winner.get_player_name()}{self.__clear} wins with {winner.print_hand()} ({hand_name}) bet = {self.__players_states[winner]['bet']}. Pot: {self.__pot}"
         print(text)
         self.round_history.append(text)
@@ -248,7 +246,7 @@ class GameEngine:
         for player in self.__players_:
             if player == winner:
                 continue
-            hand_name, _ = self._calculate_hand_strength(player)
+            hand_name, _ = self._calculate_hand_strength(player.get_player_hand())
             if self.__players_states[player]["folded"]:
                 folded = 'folded'
             else:
@@ -268,35 +266,16 @@ class GameEngine:
         for i in range(100):
             print()
 
-    def print_table_info(self):
+    def print_table_info(self, confidential: bool = False):
         print(f'Pot: {self.__purple}{self.__pot}{self.__clear}')
         print(f'Current bet: {self.__purple}{self.__current_bet}{self.__clear}')
 
         if len(self.round_history) > 0:
             print(f'{self.__blue}Round history:{self.__clear}')
             for action in self.round_history:
+                if 'CONFIDENTIAL' in action and not confidential:
+                    continue
                 print(f'{self.__blue}{action}{self.__clear}')
-
-    def get_indecies(self, player: Player, redemption_chances: int = 3) -> List[int]:
-        """Returns list of cards to exchange."""
-        indecies = []
-        self.clear_view()
-        print(f'Action of {self.__purple}{player.get_player_name()}{self.__clear}')
-        print(player.cards_to_str())
-        print('Select cards to exchange (1-5) or nothing to skip(like: 1 2 4):')
-        input_ = input()
-        for i in input_.split():
-            try:
-                if int(i) < 1 or int(i) > 5:
-                    raise ValueError()
-                indecies.append(int(i) - 1)
-            except ValueError:
-                print(f"Wrong index: {i}")
-                if redemption_chances == 0:
-                    print("Too many errors. No cards exchanged.")
-                    return []
-                return self.get_indecies(player, redemption_chances=redemption_chances - 1)
-        return indecies
     
     def prompt_bet(self, player: Player, wrong_choice: bool = False) -> tuple:
         """Gets player action call/raise/check/all_in."""
@@ -391,6 +370,27 @@ class GameEngine:
         """Sorts player cards."""
         player.get_player_hand().sort(key=lambda x: x.get_value()[0], reverse=True)
     
+    def get_indecies(self, player: Player, redemption_chances: int = 3) -> List[int]:
+        """Returns list of cards to exchange."""
+        indecies = []
+        self.clear_view()
+        print(f'Action of {self.__purple}{player.get_player_name()}{self.__clear}')
+        print(player.cards_to_str())
+        print('Select cards to exchange (1-5) or nothing to skip(like: 1 2 4):')
+        input_ = input()
+        for i in input_.split():
+            try:
+                if int(i) < 1 or int(i) > 5:
+                    raise ValueError()
+                indecies.append(int(i) - 1)
+            except ValueError:
+                print(f"Wrong index: {i}")
+                if redemption_chances == 0:
+                    print("Too many errors. No cards exchanged.")
+                    return []
+                return self.get_indecies(player, redemption_chances=redemption_chances - 1)
+        return indecies
+    
     def exchange_cards(self):
         """Exchange cards, puts exchanged cards into deck."""
         for player in self.__players_:
@@ -404,19 +404,31 @@ class GameEngine:
             cards = []
             for i in indecies:
                 cards.append(player.get_player_hand()[i])
-            self.round_history.append(f'{player.get_player_name()} exchanged {len(indecies)} cards')
+            cards_put_back_str = ''
+            for card in cards:
+                cards_put_back_str += str(card) + ' '
 
-            remaining_cards = []
+            kept_cards = []
             for i in range(5):
                 if i not in indecies:
-                    remaining_cards.append(player.get_player_hand()[i])
+                    kept_cards.append(player.get_player_hand()[i])
             
+            previous_cards = ''
+            for card in player.get_player_hand():
+                previous_cards += str(card) + ' '
+
             player.clear_hand()
-            player.__hand_ = remaining_cards
+            for card in kept_cards:
+                player.take_card(card)
 
             self.__deck_.collect_cards(cards)
 
-        self.__deck_.fill_hands(self.__players_)
+            self.__deck_.fill_hands([player])
+            current_cards = ''
+            for card in player.get_player_hand():
+                current_cards += str(card) + ' '
+            self.round_history.append(f'CONFIDENTIAL: {player.get_player_name()} exchanged from hand {previous_cards}: {cards_put_back_str}for {current_cards}')
+            self._sort_cards(player)
     
     def _showdown(self) -> Player:
         """Compare hands and find winner."""
@@ -425,15 +437,15 @@ class GameEngine:
         for player in self.__players_:
             if self.__players_states[player]['folded']:
                 continue
-            _, hand_strength = self._calculate_hand_strength(player)
+            _, hand_strength = self._calculate_hand_strength(player.get_player_hand())
             if hand_strength > best_hand:
                 best_hand = hand_strength
                 winner = player
         return winner
 
-    def _calculate_hand_strength(self, player: Player) -> tuple:
+    def _calculate_hand_strength(self, hand: list = []) -> tuple:
         """Calculates hand strenght."""
-        hand = player.get_player_hand()
+        hand = hand
         hand.sort(key=lambda x: x.get_value()[0], reverse=True)
         hand_strength = 0
         # 1 Royal Flush
@@ -441,35 +453,35 @@ class GameEngine:
             hand_strength = 100
             name = 'Royal Flush'
         # 2 Straight Flush
-        if self._is_straight_flush(hand):
+        elif self._is_straight_flush(hand):
             hand_strength = 90
             name = 'Straight Flush'
         # 3 Four of a Kind
-        if self._is_four_of_a_kind(hand):
+        elif self._is_four_of_a_kind(hand):
             hand_strength = 80
             name = 'Four of a Kind'
         # 4 Full House
-        if self._is_full_house(hand):
+        elif self._is_full_house(hand):
             hand_strength = 70
             name = 'Full House'
         # 5 Flush
-        if self._is_flush(hand):
+        elif self._is_flush(hand):
             hand_strength = 60
             name = 'Flush'
         # 6 Straight
-        if self._is_straight(hand):
+        elif self._is_straight(hand):
             hand_strength = 50
             name = 'Straight'
         # 7 Three of a Kind
-        if self._is_three_of_a_kind(hand):
+        elif self._is_three_of_a_kind(hand):
             hand_strength = 40
             name = 'Three of a Kind'
         # 8 Two Pair
-        if self._is_two_pair(hand):
+        elif self._is_two_pair(hand):
             hand_strength = 30
             name = 'Two Pair'
         # 9 Pair
-        if self._is_pair(hand):
+        elif self._is_pair(hand):
             hand_strength = 20
             name = 'Pair'
         # 10 High Card
@@ -567,24 +579,25 @@ class GameEngine:
         return ranks[0]
 
 if __name__ == "__main__":
-    deck = Deck(start_card=7)
-    print(deck)
+    game = GameEngine([Player(100, 'Satori'), Player(100, 'Koishi')], start_card=7)
 
-    player1 = Player(100, 'Satori')
-    player2 = Player(100, 'Koishi')
+    royal_flush = [Card(14, 's'), Card(13, 's'), Card(12, 's'), Card(11, 's'), Card(10, 's')]
+    straight_flush = [Card(13, 's'), Card(12, 's'), Card(11, 's'), Card(10, 's'), Card(9, 's')]
+    four_of_a_kind = [Card(14, 's'), Card(14, 'h'), Card(14, 'd'), Card(14, 'c'), Card(10, 's')]
+    full_house = [Card(14, 's'), Card(14, 'h'), Card(14, 'd'), Card(10, 'c'), Card(10, 's')]
+    flush = [Card(14, 's'), Card(13, 's'), Card(12, 's'), Card(11, 's'), Card(9, 's')]
+    straight = [Card(14, 's'), Card(13, 'h'), Card(12, 'd'), Card(11, 'c'), Card(10, 's')]
+    three_of_a_kind = [Card(14, 's'), Card(14, 'h'), Card(14, 'd'), Card(10, 'c'), Card(9, 's')]
+    two_pair = [Card(14, 's'), Card(14, 'h'), Card(10, 'd'), Card(10, 'c'), Card(9, 's')]
+    pair = [Card(14, 's'), Card(14, 'h'), Card(10, 'd'), Card(9, 'c'), Card(8, 's')]
+    high_card = [Card(14, 's'), Card(13, 'h'), Card(10, 'd'), Card(9, 'c'), Card(8, 's')]
 
-    deck.deal([player1, player2])
-    print(player1.cards_to_str())
-    print(player2.cards_to_str())
+    all_cards = [royal_flush, straight_flush, four_of_a_kind, full_house, flush, straight, three_of_a_kind, two_pair, pair, high_card]
 
-    print(deck)
-
-    game = GameEngine([player1, player2], deck)
-    game.play_round()
-
-    # cards = [Card(14, 's'), Card(14, 's'), Card(13, 's'), Card(13, 's'), Card(10, 's')]
-    # cards.sort(key=lambda x: x.get_value()[0], reverse=True)
-    # print(game.is_two_pair(cards))
-    # for card in cards:
-    #     print(card)
+    for cards in all_cards:
+        for card in cards:
+            print(str(card), end=' ')
+        name, strength = game._calculate_hand_strength(cards)
+        print(f'Hand: {name}, Strength: {strength}')
+        print()
 
