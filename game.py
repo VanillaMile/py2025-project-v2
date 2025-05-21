@@ -1,5 +1,6 @@
 import random
 from typing import List
+import pandas as pd
 
 class Player():
 
@@ -152,6 +153,24 @@ class GameEngine:
             }
         self.__raise_amount = raise_amount
 
+    def save_game_logs(self):
+        """Saves game logs to file."""
+        date_now_str = pd.Timestamp.now().strftime('%Y-%m-%d_%H-%M-%S')
+        with open(f'game_logs_{date_now_str}.csv', 'w') as f:
+            for i in range(len(self.history)):
+                for action in self.history[i]:
+                    action = action.replace(f'{self.__blue}', '')
+                    action = action.replace(f'{self.__red}', '')
+                    action = action.replace(f'{self.__purple}', '')
+                    action = action.replace(f'{self.__clear}', '')
+                    action = action.replace('\033[0;30m', '')
+                    action = action.replace(',', '')
+
+                    f.write(f'{i},{action}\n')
+        print(f'Game logs saved to game_logs_{date_now_str}.csv')
+        f.close()
+        
+
     def play_round(self) -> None:
         """
         Handles the game round.
@@ -260,6 +279,10 @@ class GameEngine:
         input_ = input()
         if input_.lower() == 'y':
             self.play_round()
+        else:
+            self.save_game_logs()
+            print('Game ended')
+            return
 
     def clear_view(self):
         """Clears view."""
