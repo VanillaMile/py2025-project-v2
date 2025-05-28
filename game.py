@@ -53,6 +53,11 @@ class Player():
             raise ValueError("Not enough funds")
         self.__stack_ -= amount
 
+    def add_money(self, amount):
+        if amount < 0:
+            raise ValueError("Cannot add negative amount")
+        self.__stack_ += amount
+
 class Card:
     unicode_dict = {'s': '\u2660', 'h': '\u2665', 'd': '\u2666', 'c': '\u2663', 'red': '\033[0;31m', 'black': '\033[0;30m', 'reset': '\033[0m'}
        
@@ -83,6 +88,7 @@ class Deck():
     def __init__(self, start_card = 2, shuffle=True):
         if start_card < 2 or start_card > 14:
             raise ValueError("start_card must be between 2 and 14")
+        self.__start_card_ = start_card
 
         self.__deck_ = [Card(rank, suit) for rank in range(start_card, 15) for suit in ['s', 'h', 'd', 'c']]
 
@@ -109,7 +115,7 @@ class Deck():
         
     
     def reset_deck(self, shuffle=True):
-        self.__deck_ = [Card(rank, suit) for rank in range(2, 15) for suit in ['s', 'h', 'd', 'c']]
+        self.__deck_ = [Card(rank, suit) for rank in range(self.__start_card_, 15) for suit in ['s', 'h', 'd', 'c']]
         if shuffle:
             self.shuffle()
 
@@ -182,6 +188,8 @@ class GameEngine:
         """
         self.__deck_.reset_deck(shuffle=True)
         self.round_history = []
+        self.__pot = 0
+        self.__current_bet = 0
 
         for player in self.__players_:
             self.__players_states[player]['bet'] = 0
@@ -260,6 +268,7 @@ class GameEngine:
         hand_name, _ = self._calculate_hand_strength(winner.get_player_hand())
         text = f"{self.__purple}{winner.get_player_name()}{self.__clear} wins with {winner.print_hand()} ({hand_name}) bet = {self.__players_states[winner]['bet']}. Pot: {self.__pot}"
         print(text)
+        winner.add_money(self.__pot)
         self.round_history.append(text)
         print(f'Other players:')
         for player in self.__players_:
