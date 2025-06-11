@@ -1,6 +1,7 @@
 import random
 from typing import List
 import pandas as pd
+import time
 
 class Player():
 
@@ -47,6 +48,26 @@ class Player():
         for card in self.__hand_:
             return_string += str(card) + ' '
         return return_string + '\n'
+    
+    def cards_str_line(self, with_name: bool = False) -> str:
+        return_string = ''
+        if with_name:
+            return_string = 'Player: ' + self.__name_ + ' | '
+            return_string += 'Money: ' + str(self.__stack_) + ' | '
+        for card in self.__hand_:
+            return_string += str(card) + ' '
+        return_string = return_string.replace('\n', '')
+        return_string = return_string.replace('\033[0;31m', 'R')
+        return_string = return_string.replace('\033[0;30m', 'B')
+        return_string = return_string.replace('\033[0m', '')
+        return return_string.strip()
+    
+    def cards_chat(self) -> str:
+        return_string = self.cards_str_line()
+        return_string = return_string.replace('R', '')
+        return_string = return_string.replace('B', '')
+        return return_string
+        
     
     def take_money(self, amount):
         if amount > self.__stack_:
@@ -158,6 +179,43 @@ class GameEngine:
                 'checked': False
             }
         self.__raise_amount = raise_amount
+        self.input = None
+        self.is_waiting_for_action = False
+        self.action_type_required = None
+        self.message_for_player_action = None
+        self.allowed_actions = [] # 'fold', 'call', 'raise', 'check', 'all_in' when prompting player action
+        self.waiting_for = None
+        self.message = ''
+        self.next = None
+
+        self.selected_choice = None
+
+    def online_game_state(self, for_player) -> dict:
+        """Returns game state for online game."""
+
+        game_state = {
+            'pot': self.__pot,
+            'current_bet': self.__current_bet,
+            'waiting_for': self.waiting_for,
+            'available_actions': self.allowed_actions, # 'fold', 'call', 'raise', 'check', 'all_in' when propmting player action
+            'players_info': [],
+            'message': self.message,
+        }
+        players_info = []
+        for player in self.__players_:
+            player_info = {
+                'name': player.get_player_name(),
+                'stack': player.get_stack_amount(),
+                'hand': player.cards_str_line(),
+                'bet': self.__players_states[player]['bet'],
+                'folded': self.__players_states[player]['folded'],
+                'all_in': self.__players_states[player]['all_in'],
+                'checked': self.__players_states[player]['checked']
+            }
+            players_info.append(player_info)
+        game_state['players_info'] = players_info
+        
+        return game_state
 
     def save_game_logs(self):
         """Saves game logs to file."""
@@ -198,8 +256,19 @@ class GameEngine:
             self.__players_states[player]['checked'] = False
             player.clear_hand()
         
+        self.message = 'The game of Poker will begin shortly...'
+        time.sleep(3)
+
+        self.message = 'Game started! (The messages will appear with a delay to provide better user experience)'
+        time.sleep(1)
+
+        self.message = 'Taking blinds...'
+        time.sleep(2)
+
         # Collecting blinds
         if self.__current_big_blind.get_stack_amount() < self.__big_blind:
+            self.message = 'Player doesn\'t have enough funds for big blind, game will end'
+            time.sleep(2)
             raise ValueError("Not enough funds for big blind")
         self.__pot += self.__big_blind
         self.__current_big_blind.take_money(self.__big_blind)
@@ -207,6 +276,8 @@ class GameEngine:
 
 
         if self.__current_small_blind.get_stack_amount() < self.__small_blind:
+            self.message = 'Player doesn\'t have enough funds for small blind, game will end'
+            time.sleep(2)
             raise ValueError("Not enough funds for small blind")
         self.__pot += self.__small_blind
         self.__current_small_blind.take_money(self.__small_blind)
@@ -216,6 +287,8 @@ class GameEngine:
 
         self.print_table_info()
 
+        self.message = 'Dealing cards...'
+        time.sleep(2)
         # Dealing cards
         self.__deck_.deal(self.__players_)
         for player in self.__players_:
@@ -259,7 +332,55 @@ class GameEngine:
 
         # Exchange cards
         if active != 1:
+            self.message = 'Prepare for cards exchange! (Separate window will open shortly, it might be hidden behind the game window)'
+            time.sleep(1)
             self.exchange_cards()
+        
+        self.message = 'Cards exchanged!'
+        time.sleep(4)
+
+        for player in self.__players_:
+            if self.__players_states[player]['checked']:
+                self.__players_states[player]['checked'] = False
+
+        self.message = 'Starting round 2 of betting...'
+        time.sleep(5)
+        # Round 2
+        active = 0
+        while True:
+            state = 'check'
+            active = 0
+            for player in self.__players_:
+                if self.__players_states[player]['folded']:
+                    continue
+                active += 1
+
+            if active == 1:
+                # Covers fold
+                break
+
+            for player in self.__players_:
+                if self.__players_states[player]['folded']:
+                    continue
+                if self.__players_states[player]['all_in']:
+                    continue
+                if self.__players_states[player]['checked'] and self.__players_states[player]['bet'] == self.__current_bet:
+                    continue
+                else:
+                    self.__players_states[player]['checked'] = False
+
+                player_action = self.prompt_bet(player)
+                action = self._apply_bet(player, player_action)
+
+                if action == 'fold':
+                    self.__players_states[player]['folded'] = True
+                elif action == 'all_in':
+                    self.__players_states[player]['all_in'] = True
+                    
+                if action != 'check':
+                    state = action
+            if state == 'check':
+                break
 
         # Showdown
         self.clear_view()
@@ -268,6 +389,17 @@ class GameEngine:
         hand_name, _ = self._calculate_hand_strength(winner.get_player_hand())
         text = f"{self.__purple}{winner.get_player_name()}{self.__clear} wins with {winner.print_hand()} ({hand_name}) bet = {self.__players_states[winner]['bet']}. Pot: {self.__pot}"
         print(text)
+        
+        self.message = 'Calculating winner...'
+        time.sleep(3)
+
+        self.message = f'{winner.get_player_name()} wins with {hand_name} ({winner.cards_chat()}) and takes the pot of {self.__pot}!'
+        time.sleep(3)
+
+        self.message = 'Next round will begin shortly...'
+        time.sleep(5)
+
+
         winner.add_money(self.__pot)
         self.round_history.append(text)
         print(f'Other players:')
@@ -285,7 +417,8 @@ class GameEngine:
         self.history.append(self.round_history)
 
         print('Play next round? (y/n) [n]')
-        input_ = input()
+        input_ = 'y' #TODO: add input
+
         if input_.lower() == 'y':
             self.play_round()
         else:
@@ -349,11 +482,56 @@ class GameEngine:
             print('9. Go all in')
             allowed_choices.append('9')
 
+        self.message_for_player_action = f'Action of {self.__purple}{player.get_player_name()}{self.__clear}'
+
+        self.is_waiting_for_action = True
+        self.action_type_required = 'bet'
+
+        for input_ in allowed_choices:
+            if input_ == '1':
+                self.allowed_actions.append('fold')
+            elif input_ == '2':
+                self.allowed_actions.append('all_in')
+            elif input_ == '3':
+                self.allowed_actions.append('call')
+            elif input_ == '4':
+                self.allowed_actions.append('raise')
+            elif input_ == '7':
+                self.allowed_actions.append('check')
+
+        self.waiting_for = player.get_player_name()
+
+        while self.selected_choice is None:
+            print(f'Waiting for action from {self.__purple}{player.get_player_name()}{self.__clear}... Available actions: {allowed_choices}, chosen: {self.selected_choice}')
+            self.message = f'Waiting for action from {player.get_player_name()}...'
+
+        selected = str(self.selected_choice).lower().strip()
+
+        if selected == 'fold':
+            selected = '1'
         
-        input_ = input('Choose action: ')
-        if input_ not in allowed_choices:
-            return self.prompt_bet(player, wrong_choice=True)
-        return input_
+        if selected == 'call':
+            selected = '3'
+        
+        if selected == 'raise':
+            selected = '4'
+        
+        if selected == 'check':
+            selected = '7'
+
+        if selected == 'all':
+            selected = '9'
+
+        self.input = None
+        self.is_waiting_for_action = False
+        self.action_type_required = None
+        self.message_for_player_action = None
+        self.allowed_actions = [] # 'fold', 'call', 'raise', 'check', 'all_in' when prompting player action
+
+        self.selected_choice = None
+        self.waiting_for = None
+        
+        return selected
 
     def _apply_bet(self, player: Player, input_: str = '') -> str:
         added = 0
@@ -362,6 +540,7 @@ class GameEngine:
             return_string = 'fold'
             self.__players_states[player]['folded'] = True
             self.round_history.append(f'{player.get_player_name()} folded, bet = {self.__players_states[player]["bet"]}, pot = {self.__pot}')
+            self.message = f'{player.get_player_name()} folded. Their bet was {self.__players_states[player]["bet"]}'
 
         elif input_ == '3':
             return_string = 'call'
@@ -369,6 +548,7 @@ class GameEngine:
             self.__players_states[player]['bet'] += added
             self.__players_states[player]['checked'] = True
             self.round_history.append(f'{player.get_player_name()} called {added}, bet = {self.__players_states[player]["bet"]}, pot = {self.__pot}')
+            self.message = f'{player.get_player_name()} called. Their bet is now {self.__players_states[player]["bet"]}'
             
         elif input_ == '4':
             return_string = 'raise'
@@ -376,22 +556,28 @@ class GameEngine:
             self.__players_states[player]['bet'] += added
             self.__current_bet = self.__players_states[player]['bet']
             self.round_history.append(f'{player.get_player_name()} raised {added}, bet = {self.__players_states[player]["bet"]}, pot = {self.__pot}')
+            self.message = f'{player.get_player_name()} raised. Their bet is now {self.__players_states[player]["bet"]}'
         elif input_ == '9' or input_ == '2':
             return_string = 'all_in'
             self.__players_states[player]['all_in'] = True
+            previous_bet = self.__players_states[player]['bet']
             self.__players_states[player]['bet'] = self.__players_states[player]['bet'] + player.get_stack_amount()
             if self.__players_states[player]['bet'] > self.__current_bet:
-                self.__pot += self.__players_states[player]['bet'] - self.__current_bet
+                self.__pot += self.__players_states[player]['bet'] - previous_bet
                 self.__current_bet = self.__players_states[player]['bet']
             else:
                 self.__pot += player.get_stack_amount()
             player.take_money(player.get_stack_amount())
             self.round_history.append(f'{player.get_player_name()} went all in {self.__players_states[player]["bet"]}, bet = {self.__players_states[player]["bet"]}, pot = {self.__pot}')
+            self.message = f'{player.get_player_name()} went all in. Their bet is now {self.__players_states[player]["bet"]}'
 
         elif input_ == '7':
             return_string = 'check'
             self.__players_states[player]['checked'] = True
             self.round_history.append(f'{player.get_player_name()} checked, bet = {self.__players_states[player]["bet"]}, pot = {self.__pot}')
+            self.message = f'{player.get_player_name()} checked. Their bet is {self.__players_states[player]["bet"]}'
+            
+        time.sleep(0.5) # Simulate some delay for better user experience
         
         player.take_money(added)
         self.__pot += added
@@ -409,7 +595,25 @@ class GameEngine:
         print(f'Action of {self.__purple}{player.get_player_name()}{self.__clear}')
         print(player.cards_to_str())
         print('Select cards to exchange (1-5) or nothing to skip(like: 1 2 4):')
-        input_ = input()
+        
+        self.message_for_player_action = f'Action of {self.__purple}{player.get_player_name()}{self.__clear}'
+        self.is_waiting_for_action = True
+        self.action_type_required = 'exchange_cards'
+        self.allowed_actions = ['1', '2', '3', '4', '5', '9']  # 9 is for skip exchange
+        self.selected_choice = None
+
+        self.waiting_for = player.get_player_name()
+        while self.selected_choice is None:
+            print(f'Waiting for action from {self.__purple}{player.get_player_name()}{self.__clear}...')
+        input_ = self.selected_choice
+
+        self.is_waiting_for_action = False
+        self.action_type_required = None
+        self.message_for_player_action = None
+        self.allowed_actions = []  # Reset allowed actions after getting input
+        self.selected_choice = None
+        self.waiting_for = None
+
         for i in input_.split():
             try:
                 if int(i) < 1 or int(i) > 5:
