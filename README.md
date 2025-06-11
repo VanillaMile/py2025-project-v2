@@ -1,3 +1,19 @@
+# Instalacja i uruchamianie
+
+Należy zainstalować wymagane pakiety z pliku requirements.txt
+
+Istnieją 3 sposoby na uruchomienie gry:
+
+- Po zainstalowaniu pakietów z requirements.txt jeśli środowisko wirtualne nazywa się venv i znajduje się w tym samym katalogu można uruchomić plikt quick_start_venv.bat który automatycznie uruchomi server i dwóch klientów.
+- Jeśli wymagane pakiety zostaną zainstalowane globalnie możliwe jest uruchomienie pliku quick_start_global.bat który automatycznie uruchomi server i dwóch klientów
+- Można samodzielnie uruchamiać server i klientów. Należy pamiętać że server powinien zostać uruchomiony jako pierwszy, a do gry wymaganych jest minimum 2 graczy.
+
+# Dodatkowe informacje
+
+Aby tekst nie pojawiał się za szybko każda wiadomość wyświetla się z pewnym opóźnieniem, niektóre wiadomości są opóźnione o 6~10s.
+
+Do wymiany kart wyświetla się osobne okno, może się zdarzyć że będzie ono przysłonięte przez okno gry.
+
 # py2025-project-v2
 
 ## Temat projektu:
