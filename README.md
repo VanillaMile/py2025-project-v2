@@ -1,3 +1,7 @@
+# Autor
+
+Dominik Żak - 131398
+
 # Instalacja i uruchamianie
 
 Należy zainstalować wymagane pakiety z pliku requirements.txt
